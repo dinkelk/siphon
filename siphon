@@ -1,37 +1,14 @@
 #!/bin/sh
 
-# Color output:
-RED='\033[31m'
-GREEN='\033[32m'
-CYAN='\033[36m'
-YELLOW='\033[33m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
+###############################################
+# Global definitions:
+###############################################
 
-# Print functions:
-print_()
-{
-  echo "$@"$NC
-}
-print_status()
-{
-  print_ $BOLD"$@"
-}
-print_copy()
-{
-  filename=$1
-  print_ $GREEN"copying  "$BOLD"$filename"
-}
-print_warning()
-{
-  print_ $YELLOW"$@"
-}
-print_copy_warning()
-{
-  filename=$1
-  shift
-  print_warning "warning  "$BOLD"$filename - $@"
-}
+temp_prefix=".siphon."
+
+###############################################
+# Parse input:
+###############################################
 
 print_usage()
 {
@@ -98,14 +75,114 @@ then
   local_dir="."
 fi
 
-list_remote_files()
+###############################################
+# Print functions:
+###############################################
+
+# Color output:
+RED='\033[31m'
+GREEN='\033[32m'
+CYAN='\033[36m'
+YELLOW='\033[33m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+print_()
+{
+  if [ -n "$color" ]
+  then
+    format=$1
+    echo $format"[`get_time`]$NC $@"$NC
+  else
+    echo "[`get_time`] $@"
+  fi
+}
+get_time()
+{
+  date +"%m-%d-%y %H:%M:%S"
+}
+print_status()
+{
+  if [ -n "$color" ]
+  then
+    print_ "" $BOLD"$@"
+  else
+    print_ "$@"
+  fi
+}
+print_copy()
+{
+  if [ -n "$color" ]
+  then
+    filename=$1
+    print_ $GREEN "copying  $BOLD$filename"
+  else
+    print_ "copying  $filename"
+  fi
+}
+print_warning()
+{
+  if [ -n "$color" ]
+  then
+    print_ $YELLOW "$@"
+  else
+    print_ "$@"
+  fi
+}
+print_copy_warning()
+{
+  if [ -n "$color" ]
+  then
+    filename=$1
+    shift
+    print_warning "warning  $BOLD$filename - $@"
+  else
+    print_warning "warning  $filename - $@"
+  fi
+}
+print_error()
+{
+  if [ -n "$color" ]
+  then
+    print_ $RED$BOLD "$@"
+  else
+    print_ "$@"
+  fi
+}
+print_copy_error()
+{
+  if [ -n "$color" ]
+  then
+    filename=$1
+    shift
+    print_error "error    $BOLD$filename - $@"
+  else
+    print_error "error    $filename - $@"
+  fi
+}
+
+###############################################
+# Helper functions:
+###############################################
+
+run_remote()
 {
   if [ -n "$remote_port" ] 
   then
-    ssh -p $remote_port $remote_username@$remote_hostname "ls $remote_dir"
+    ssh -p $remote_port $remote_username@$remote_hostname "$@"
   else
-    ssh $remote_username@$remote_hostname "ls $remote_dir"
+    ssh $remote_username@$remote_hostname "$@"
   fi
+}
+
+list_remote_files()
+{
+  run_remote "ls $remote_dir"
+}
+
+list_local_files()
+{
+  ls $local_dir
 }
 
 copy_remote_file()
@@ -120,7 +197,7 @@ copy_remote_file()
     return 1
   fi
   
-  temp_filename="$local_dir/.siphon.$filename"
+  temp_filename="$local_dir/$temp_prefix$filename"
   if [ -n "$remote_port" ] 
   then
     scp -r -P $remote_port $remote_username@$remote_hostname:"$remote_dir/$filename" $local_dir/$temp_filename > /dev/null
@@ -132,10 +209,33 @@ copy_remote_file()
   mv $temp_filename $filename
 
   # Remove the remote file
+  if [ $delete_remote ] 
+  then
+    run_remote "rm -rf $filename"
+  fi
 }
 
+cleanup()
+{
+  echo "cleaning up"
+  rm -rf "$temp_prefix*"
+}
+
+# Register the signal handler
+trap "cleanup; exit 0" SIGHUP SIGINT SIGTERM
+
+# remove any old temp files hanging around
+# press ctl c to exit
+# use trab to remove old temp files
+
 print_status "Siphoning files from '$remote_username@$remote_hostname:$remote_port$remote_dir' to '$local_dir'"
+print_status "Use ctrl+c to exit..."
 remote_files=`list_remote_files`
+if [ "$?" -ne "0" ]
+then
+  print_error "No such file or directory '$remote_username@$remote_hostname:$remote_port$remote_dir'"
+  exit 1
+fi
 for remote_file in $remote_files
 do
   copy_remote_file $remote_file
