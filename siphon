@@ -1,0 +1,150 @@
+#!/bin/sh
+
+# Color output:
+RED='\033[31m'
+GREEN='\033[32m'
+CYAN='\033[36m'
+YELLOW='\033[33m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Print functions:
+print_()
+{
+  echo "$@"$NC
+}
+print_status()
+{
+  print_ $BOLD"$@"
+}
+print_copy()
+{
+  filename=$1
+  print_ $GREEN"copying  "$BOLD"$filename"
+}
+print_warning()
+{
+  print_ $YELLOW"$@"
+}
+print_copy_warning()
+{
+  filename=$1
+  shift
+  print_warning "warning  "$BOLD"$filename - $@"
+}
+
+print_usage()
+{
+  echo "Usage: siphon [-h?nd] username@hostname:/path/to/dir [path/to/local/dir]"
+  echo "Options: -d delete remote files after copying"
+  echo "         -n disable color output"
+  echo "         -h print usage"
+}
+
+if [ $# -lt 1 ]
+then
+  print_usage
+  exit 1
+fi
+
+# Argument parsing:
+# Good example here: 
+# http://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
+# A POSIX variable
+OPTIND=1 # Reset in case getopts has been used previously in the shell.
+
+# Initialize our own variables:
+delete_remote=
+color="Y"
+
+# Parse options:
+while getopts "h?nd" opt; do
+  case "$opt" in
+    h|\?)
+      print_usage
+      exit 0
+      ;;
+    d)  delete_remote="Y"
+      ;;
+    n)  color=
+      ;;
+    *) 
+      echo "Invalid option '$opt'"
+      print_usage
+      exit 1
+  esac
+done
+shift $((OPTIND-1))
+[ "$1" = "--" ] && shift
+
+# Parse input:
+remote=$@
+remote_username=`echo "$remote" | cut -d "@" -f 1`
+remainder=`echo "$remote" | cut -d "@" -f 2`
+remote_hostname=`echo "$remainder" | cut -d ":" -f 1`
+remainder=`echo "$remainder" | cut -d ":" -f 2`
+export remote_port=`echo "$remainder" | tr "~" "/" | cut -d "/" -f 1`
+if [ -n "$remote_port" ] 
+then
+  port_length=`echo $remote_port | wc -c`
+  remote_dir=`echo $remainder | cut -c $port_length-`
+else
+  remote_dir=$remainder
+fi
+
+local_dir=$2
+if [ -z "$local_dir" ] 
+then
+  local_dir="."
+fi
+
+list_remote_files()
+{
+  if [ -n "$remote_port" ] 
+  then
+    ssh -p $remote_port $remote_username@$remote_hostname "ls $remote_dir"
+  else
+    ssh $remote_username@$remote_hostname "ls $remote_dir"
+  fi
+}
+
+copy_remote_file()
+{
+  filename=$1
+  print_copy $filename
+  local_filename="$local_dir/$filename"
+
+  if [ -a "$local_filename" ] || [ -d "$local_filename" ]
+  then
+    print_copy_warning $filename "already exists, not overwriting."
+    return 1
+  fi
+  
+  temp_filename="$local_dir/.siphon.$filename"
+  if [ -n "$remote_port" ] 
+  then
+    scp -r -P $remote_port $remote_username@$remote_hostname:"$remote_dir/$filename" $local_dir/$temp_filename > /dev/null
+  else
+    scp -r $remote_username@$remote_hostname:"$remote_dir/$filename" $local_dir/$temp_filename > /dev/null
+  fi
+
+  # Atomically copy over the new file from the temp
+  mv $temp_filename $filename
+
+  # Remove the remote file
+}
+
+print_status "Siphoning files from '$remote_username@$remote_hostname:$remote_port$remote_dir' to '$local_dir'"
+remote_files=`list_remote_files`
+for remote_file in $remote_files
+do
+  copy_remote_file $remote_file
+done
+
+
+
+
+
+
+ 
+
