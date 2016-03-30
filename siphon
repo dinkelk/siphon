@@ -13,7 +13,8 @@ temp_prefix=".siphon."
 print_usage()
 {
   echo "Usage: siphon [-h?nd] username@hostname:/path/to/dir [path/to/local/dir]"
-  echo "Options: -d delete remote files after copying"
+  echo "Options: -t time interval in seconds to wait between copying new files"
+  echo "         -d delete remote files after copying"
   echo "         -n disable color output"
   echo "         -h print usage"
 }
@@ -31,15 +32,18 @@ fi
 OPTIND=1 # Reset in case getopts has been used previously in the shell.
 
 # Initialize our own variables:
-delete_remote=
+delete_remote="Y"
 color="Y"
+time_interval="60"
 
 # Parse options:
-while getopts "h?nd" opt; do
+while getopts "h?ndt:" opt; do
   case "$opt" in
     h|\?)
       print_usage
       exit 0
+      ;;
+    t)  time_interval=$OPTARG
       ;;
     d)  delete_remote="Y"
       ;;
@@ -185,34 +189,60 @@ list_local_files()
   ls $local_dir
 }
 
+list_new_files()
+{
+  remote_temp_file=$local_dir/$temp_prefix"remote.temp"
+  local_temp_file=$local_dir/$temp_prefix"local.temp"
+  list_remote_files > $remote_temp_file
+  list_local_files > $local_temp_file
+  # Diff the local vs remote file and extract
+  diff $local_temp_file $remote_temp_file | awk '/^\>.*$/ { s = ""; for (i = 2; i <= NF; i++) s = s $i " "; print s }'
+  rm -f $local_temp_file $remote_temp_file
+}
+
 copy_remote_file()
 {
   filename=$1
   print_copy $filename
   local_filename="$local_dir/$filename"
+  remote_filename="$remote_dir/$filename"
+  temp_filename="$local_dir/$temp_prefix$filename"
 
   if [ -a "$local_filename" ] || [ -d "$local_filename" ]
   then
     print_copy_warning $filename "already exists, not overwriting."
-    return 1
+    return 0
   fi
   
-  temp_filename="$local_dir/$temp_prefix$filename"
   if [ -n "$remote_port" ] 
   then
-    scp -r -P $remote_port $remote_username@$remote_hostname:"$remote_dir/$filename" $local_dir/$temp_filename > /dev/null
+    scp -r -P $remote_port $remote_username@$remote_hostname:"$remote_filename" $temp_filename > /dev/null
   else
-    scp -r $remote_username@$remote_hostname:"$remote_dir/$filename" $local_dir/$temp_filename > /dev/null
+    scp -r $remote_username@$remote_hostname:"$remote_filename" $temp_filename > /dev/null
   fi
 
   # Atomically copy over the new file from the temp
   mv $temp_filename $filename
 
   # Remove the remote file
-  if [ $delete_remote ] 
+  if [ -n "$delete_remote" ] 
   then
-    run_remote "rm -rf $filename"
+    run_remote "rm -rf $remote_filename"
   fi
+}
+
+copy_remote_files()
+{
+  new_files=`list_new_files`
+  if [ "$?" -ne "0" ]
+  then
+    print_error "No such file or directory '$remote_username@$remote_hostname:$remote_port$remote_dir'"
+    exit 1
+  fi
+  for new_file in $new_files
+  do
+    copy_remote_file $new_file
+  done
 }
 
 cleanup()
@@ -221,30 +251,35 @@ cleanup()
   rm -rf "$temp_prefix*"
 }
 
+###############################################
+# Main:
+###############################################
 # Register the signal handler
 trap "cleanup; exit 0" SIGHUP SIGINT SIGTERM
 
-# remove any old temp files hanging around
-# press ctl c to exit
-# use trab to remove old temp files
-
 print_status "Siphoning files from '$remote_username@$remote_hostname:$remote_port$remote_dir' to '$local_dir'"
 print_status "Use ctrl+c to exit..."
-remote_files=`list_remote_files`
-if [ "$?" -ne "0" ]
-then
-  print_error "No such file or directory '$remote_username@$remote_hostname:$remote_port$remote_dir'"
-  exit 1
-fi
-for remote_file in $remote_files
+
+# Copy remote files forever:
+last_time="0"
+while [ 1 ]
 do
-  copy_remote_file $remote_file
+  current_time=`date +%s`
+  time_diff=`expr $current_time - $last_time`
+  
+  # If enough time has elapsed... copy new files:
+  if [ "$time_diff" -ge "$time_interval" ]
+  then
+    copy_remote_files
+    if [ "$?" -ne "0" ]
+    then
+      exit 1
+    fi
+    last_time=$current_time
+  # Not enough time has elapsed... sleep:
+  else
+    time_to_sleep=`expr $time_interval - $time_diff`
+    echo "sleeping $time_to_sleep"
+    sleep $time_to_sleep
+  fi
 done
-
-
-
-
-
-
- 
-
