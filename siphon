@@ -125,11 +125,12 @@ print_copy_error()
 
 print_usage()
 {
-  echo "Usage: siphon [-h?ndt] username@hostname:/path/to/dir [path/to/local/dir]"
+  echo "Usage: siphon [-h?ndDt:] [username@hostname:]/path/to/source [[username@hostname:]/path/to/destination]"
   echo "Options: -t time interval in seconds to wait between copying new files"
   echo "         -d delete remote files after copying"
   echo "         -n disable color output"
   echo "         -h print usage"
+  echo "         -D show debug prints"
 }
 
 if [ $# -lt 1 ]
@@ -146,11 +147,12 @@ OPTIND=1 # Reset in case getopts has been used previously in the shell.
 
 # Initialize our own variables:
 delete_remote=
+debug=
 color="Y"
 time_interval="60"
 
 # Parse options:
-while getopts "h?ndt:" opt; do
+while getopts "h?ndDt:" opt; do
   case "$opt" in
     h|\?)
       print_usage
@@ -161,6 +163,8 @@ while getopts "h?ndt:" opt; do
     d)  delete_remote="Y"
       ;;
     n)  color=
+      ;;
+    D)  debug="Y"
       ;;
     *) 
       echo "Invalid option '$opt'"
@@ -373,6 +377,10 @@ copy_src_file()
   fi
 
   # Copy the file:
+  if [ -n "$debug" ]
+  then
+    echo "$cmd $src_filepath $temp_filepath"
+  fi
   $cmd $src_filepath $temp_filepath > /dev/null || return 1
 
   # Atomically copy over the new file from the temp
