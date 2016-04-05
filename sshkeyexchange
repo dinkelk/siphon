@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [ $# -lt 1 ]
+then
+	echo "Usage: sshKeyExchange.sh username@hostname_or_ipaddress"
+        exit 1
+fi
+
+echo "Adding your public key to" $1
+
+ssh $1 mkdir -p .ssh
+cat ~/.ssh/id_rsa.pub | ssh $1 'cat >> .ssh/authorized_keys'
