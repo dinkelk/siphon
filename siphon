@@ -357,7 +357,7 @@ copy_src_file()
   temp_filepath=`get_dest_filepath $temp_filename`
 
   # Make sure the file doesn't already exist in the destination:
-  if [ -a "$dest_filename" ] || [ -d "$dest_filename" ]
+  if [ -e "$dest_filename" ] || [ -d "$dest_filename" ]
   then
     print_copy_warning $filename "already exists, not overwriting."
     return 0
@@ -419,7 +419,7 @@ cleanup()
 ###############################################
 
 # Register the signal handler
-trap "cleanup; exit 0" SIGHUP SIGINT SIGTERM
+trap 'cleanup; exit 0' HUP INT TERM
 
 src_to_print=`get_src_pretty_path`
 dest_to_print=`get_dest_pretty_path`
