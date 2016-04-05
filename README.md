@@ -8,8 +8,8 @@ I often find myself with in a situation where files are generated on one compute
 Here is what using siphon looks like:
 
 ```
-$ siphon -d -t 10 user@RemoteMachine.com:/home/user/files ~/files
-[04-04-16 21:03:24]  Siphoning files from 'user@RemoteMachine.com:/home/user/files' to '/home/user/files'
+$ siphon -d -t 10 user@example.com:/home/user/files ~/files
+[04-04-16 21:03:24]  Siphoning files from 'user@example.com:/home/user/files' to '/home/user/files'
 [04-04-16 21:03:24]  Use ctrl+c to exit...
 [04-04-16 21:03:27]  copying  dir1
 [04-04-16 21:03:31]  copied   dir1
@@ -30,10 +30,10 @@ By default, `siphon` prints to the terminal using pretty colors. To disable this
 
 Clone this repository and add it to your path, or copy `siphon` to a location on your path.
 
-`siphon` assumes that you already have passwordless login setup for any remote machine you intend to copy files to/from. To set up passwordless login see [here](http://www.linuxproblem.org/art_9.html) or run the `sshkeyexchange` script provided:
+`siphon` assumes that you already have passwordless login setup for any remote machine you intend to copy files to/from. To set up passwordless login see [here](http://www.linuxproblem.org/art_9.html) or run the `sshkeyexchange` script provided in `util/`:
 
 ```
-$ sshkeyexchange username@RemoteMachine.com
+$ sshkeyexchange user@example.com
 ```
 
 `sshkeyexchange` will ask for the password to the remote machine twice before copying over the local machine's public key.
@@ -55,30 +55,30 @@ Options: -t time interval in seconds to wait between copying new files
 Copy any new files that appear on a remote machine to a directory on the host machine; check for new files every 10 seconds:
 
 ```
-$ siphon -t 10 username@RemoteMachine.com:/home/username/files ~/files
+$ siphon -t 10 user@example.com:/home/user/files ~/files
 ```
 
 Don't use port 22 for `ssh`? No problem:
 
 ```
-$ siphon -t 10 username@RemoteMachine.com:98765/home/usernameyfiles ~/files
+$ siphon -t 10 user@example.com:98765/home/user/files ~/files
 ```
 Copy any new files from a remote machine, but delete them off the remote machine after they are copied:
 
 ```
-$ siphon -d -t 25 username@RemoteMachine.com:/files/to/copy/and/then/delete
+$ siphon -d -t 25 user@example.com:/files/to/copy/and/then/delete
 ```
 
 Copy any new files that appear on a remote machine to the current directory on the host machine:
 
 ```
-$ siphon username@RemoteMachine.com:/home/username/files
+$ siphon user@example.com:/home/user/files
 ```
 
 Copy any new files that appear on a local machine to a remote machine:
 
 ```
-$ siphon ~/files username@RemoteMachine.com/home/username/files 
+$ siphon ~/files user@example.com/home/user/files 
 ```
 
 Copy any new files that appear in one directory to another on a local machine:
@@ -90,7 +90,7 @@ $ siphon /path/to/dir1 /path/to/dir2
 Run `siphon` in the background while copying its output to a log:
 
 ```
-$ siphon -n username@RemoteMachine.com:/home/username/files ~/files >> siphon.log &
+$ siphon -n user@example.com:/home/user/files ~/files >> siphon.log &
 ```
 
 
