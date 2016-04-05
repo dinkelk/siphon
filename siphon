@@ -6,78 +6,22 @@
 
 temp_prefix=".siphon."
 
-###############################################
-# Parse input:
-###############################################
-
-print_usage()
+get_session_number()
 {
-  echo "Usage: siphon [-h?nd] username@hostname:/path/to/dir [path/to/local/dir]"
-  echo "Options: -t time interval in seconds to wait between copying new files"
-  echo "         -d delete remote files after copying"
-  echo "         -n disable color output"
-  echo "         -h print usage"
+  awk -v min=0 -v max=999999 'BEGIN{srand(); print int(min+rand()*(max-min+1))}'
 }
 
-if [ $# -lt 1 ]
-then
-  print_usage
-  exit 1
-fi
+get_temp_dir()
+{
+  session=$1
+  if [ -n "$TMPDIR" ] 
+  then
+    echo "$TMPDIR/siphon/$session"
+  else
+    echo "/tmp/siphon/$session"
+  fi
+}
 
-# Argument parsing:
-# Good example here: 
-# http://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
-# A POSIX variable
-OPTIND=1 # Reset in case getopts has been used previously in the shell.
-
-# Initialize our own variables:
-delete_remote="Y"
-color="Y"
-time_interval="60"
-
-# Parse options:
-while getopts "h?ndt:" opt; do
-  case "$opt" in
-    h|\?)
-      print_usage
-      exit 0
-      ;;
-    t)  time_interval=$OPTARG
-      ;;
-    d)  delete_remote="Y"
-      ;;
-    n)  color=
-      ;;
-    *) 
-      echo "Invalid option '$opt'"
-      print_usage
-      exit 1
-  esac
-done
-shift $((OPTIND-1))
-[ "$1" = "--" ] && shift
-
-# Parse input:
-remote=$@
-remote_username=`echo "$remote" | cut -d "@" -f 1`
-remainder=`echo "$remote" | cut -d "@" -f 2`
-remote_hostname=`echo "$remainder" | cut -d ":" -f 1`
-remainder=`echo "$remainder" | cut -d ":" -f 2`
-export remote_port=`echo "$remainder" | tr "~" "/" | cut -d "/" -f 1`
-if [ -n "$remote_port" ] 
-then
-  port_length=`echo $remote_port | wc -c`
-  remote_dir=`echo $remainder | cut -c $port_length-`
-else
-  remote_dir=$remainder
-fi
-
-local_dir=$2
-if [ -z "$local_dir" ] 
-then
-  local_dir="."
-fi
 
 ###############################################
 # Print functions:
@@ -119,9 +63,19 @@ print_copy()
   if [ -n "$color" ]
   then
     filename=$1
-    print_ $GREEN "copying  $BOLD$filename"
+    print_ $CYAN "copying  $BOLD$filename"
   else
     print_ "copying  $filename"
+  fi
+}
+print_copy_finished()
+{
+  if [ -n "$color" ]
+  then
+    filename=$1
+    print_ $GREEN "copied   $BOLD$filename"
+  else
+    print_ "copied   $filename"
   fi
 }
 print_warning()
@@ -166,98 +120,303 @@ print_copy_error()
 }
 
 ###############################################
+# Parse input:
+###############################################
+
+print_usage()
+{
+  echo "Usage: siphon [-h?ndt] username@hostname:/path/to/dir [path/to/local/dir]"
+  echo "Options: -t time interval in seconds to wait between copying new files"
+  echo "         -d delete remote files after copying"
+  echo "         -n disable color output"
+  echo "         -h print usage"
+}
+
+if [ $# -lt 1 ]
+then
+  print_usage
+  exit 1
+fi
+
+# Argument parsing:
+# Good example here: 
+# http://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
+# A POSIX variable
+OPTIND=1 # Reset in case getopts has been used previously in the shell.
+
+# Initialize our own variables:
+delete_remote=
+color="Y"
+time_interval="60"
+
+# Parse options:
+while getopts "h?ndt:" opt; do
+  case "$opt" in
+    h|\?)
+      print_usage
+      exit 0
+      ;;
+    t)  time_interval=$OPTARG
+      ;;
+    d)  delete_remote="Y"
+      ;;
+    n)  color=
+      ;;
+    *) 
+      echo "Invalid option '$opt'"
+      print_usage
+      exit 1
+  esac
+done
+shift $((OPTIND-1))
+[ "$1" = "--" ] && shift
+
+# Return true if a string contains a substring:
+contains()
+{
+  string=$1
+  substring=$2
+  case "$string" in 
+    *$substring*)
+       return 0
+       ;;
+  esac
+  return 1
+}
+
+# Parse input:
+src=$1
+src_username=
+src_hostname=
+src_remote=
+if contains $src "@";
+then
+  src_username=`echo "$src" | cut -d "@" -f 1`
+  remainder=`echo "$src" | cut -d "@" -f 2`
+  src_hostname=`echo "$remainder" | cut -d ":" -f 1`
+  remainder=`echo "$remainder" | cut -d ":" -f 2`
+  src_port=`echo "$remainder" | tr "~" "/" | cut -d "/" -f 1`
+  if [ -n "$src_port" ] 
+  then
+    port_length=`echo $src_port | wc -c`
+    src_dir=`echo $remainder | cut -c $port_length-`
+  else
+    src_dir=$remainder
+  fi
+  src_remote="TRUE"
+else
+  src_dir=$src
+fi
+
+dest=$2
+dest_username=
+dest_hostname=
+dest_remote=
+if [ -z "$dest" ] 
+then
+  dest_dir="."
+else
+  if contains $dest "@";
+  then
+    dest_username=`echo "$dest" | cut -d "@" -f 1`
+    remainder=`echo "$dest" | cut -d "@" -f 2`
+    dest_hostname=`echo "$remainder" | cut -d ":" -f 1`
+    remainder=`echo "$remainder" | cut -d ":" -f 2`
+    dest_port=`echo "$remainder" | tr "~" "/" | cut -d "/" -f 1`
+    if [ -n "$dest_port" ] 
+    then
+      print_error "Destination ports other than the default are not supported by siphon."
+      exit 1
+    else
+      dest_dir=$remainder
+    fi
+    dest_remote="TRUE"
+  else
+    dest_dir=$dest
+  fi
+fi
+
+# Get session number and temporary directory:
+session=`get_session_number`
+temp_dir=`get_temp_dir $session`
+mkdir -p $temp_dir
+
+###############################################
 # Helper functions:
 ###############################################
 
-run_remote()
+run_src()
 {
-  if [ -n "$remote_port" ] 
+  if [ -n "$src_remote" ]
   then
-    ssh -p $remote_port $remote_username@$remote_hostname "$@"
+    if [ -n "$src_port" ] 
+    then
+      ssh -p $src_port $src_username@$src_hostname "$@"
+    else
+      ssh $src_username@$src_hostname "$@"
+    fi
   else
-    ssh $remote_username@$remote_hostname "$@"
+    $@
   fi
 }
 
-list_remote_files()
+run_dest()
 {
-  run_remote "ls $remote_dir"
+  if [ -n "$dest_remote" ]
+  then
+    if [ -n "$dest_port" ] 
+    then
+      ssh -p $dest_port $dest_username@$dest_hostname "$@"
+    else
+      ssh $dest_username@$dest_hostname "$@"
+    fi
+  else
+    $@
+  fi
 }
 
-list_local_files()
+list_src_files()
 {
-  ls $local_dir
+  run_src "ls $src_dir"
+}
+
+list_dest_files()
+{
+  run_dest "ls $dest_dir"
 }
 
 list_new_files()
 {
-  remote_temp_file=$local_dir/$temp_prefix"remote.temp"
-  local_temp_file=$local_dir/$temp_prefix"local.temp"
-  list_remote_files > $remote_temp_file
-  list_local_files > $local_temp_file
+  src_temp_file="$temp_dir/remote.temp"
+  dest_temp_file="$temp_dir/local.temp"
+  list_src_files > $src_temp_file || return 1
+  list_dest_files > $dest_temp_file || return 1
   # Diff the local vs remote file and extract
-  diff $local_temp_file $remote_temp_file | awk '/^\>.*$/ { s = ""; for (i = 2; i <= NF; i++) s = s $i " "; print s }'
-  rm -f $local_temp_file $remote_temp_file
+  diff $dest_temp_file $src_temp_file | awk '/^\>.*$/ { s = ""; for (i = 2; i <= NF; i++) s = s $i " "; print s }'
+  rm -f $dest_temp_file $src_temp_file
 }
 
-copy_remote_file()
+get_src_filepath()
+{
+  src_filename=$1
+  if [ -n "$src_remote" ]
+  then
+      echo "$src_username@$src_hostname:\"$src_filename\""
+  else
+      echo $src_filename
+  fi
+}
+
+get_dest_filepath()
+{
+  dest_filename=$1
+  if [ -n "$dest_remote" ]
+  then
+      echo "$dest_username@$dest_hostname:\"$dest_filename\""
+  else
+      echo $dest_filename
+  fi
+}
+
+get_src_pretty_path()
+{
+  if [ -n "$src_remote" ]
+  then
+    echo "$src_username@$src_hostname:$src_port$src_dir"
+  else
+    echo "$src_dir"
+  fi
+}
+
+get_dest_pretty_path()
+{
+  if [ -n "$dest_remote" ]
+  then
+    echo "$dest_username@$dest_hostname:$dest_port$dest_dir"
+  else
+    echo "$dest_dir"
+  fi
+}
+
+copy_src_file()
 {
   filename=$1
   print_copy $filename
-  local_filename="$local_dir/$filename"
-  remote_filename="$remote_dir/$filename"
-  temp_filename="$local_dir/$temp_prefix$filename"
 
-  if [ -a "$local_filename" ] || [ -d "$local_filename" ]
+  # Get the source filepath:
+  src_filename="$src_dir/$filename"
+  src_filepath=`get_src_filepath $src_filename`
+
+  # Get the destination filepath:
+  dest_filename="$dest_dir/$filename"
+  temp_filename="$dest_dir/$temp_prefix$filename"
+  temp_filepath=`get_dest_filepath $temp_filename`
+
+  # Make sure the file doesn't already exist in the destination:
+  if [ -a "$dest_filename" ] || [ -d "$dest_filename" ]
   then
     print_copy_warning $filename "already exists, not overwriting."
     return 0
   fi
-  
-  if [ -n "$remote_port" ] 
+
+  # Figure out which copy command to use:
+  if [ -n "$src_remote" ] || [ -n "$dest_remote" ]
   then
-    scp -r -P $remote_port $remote_username@$remote_hostname:"$remote_filename" $temp_filename > /dev/null
+    if [ -n "$src_port" ] 
+    then
+      cmd="scp -r -P $src_port"
+    else
+      cmd="scp -r"
+    fi
   else
-    scp -r $remote_username@$remote_hostname:"$remote_filename" $temp_filename > /dev/null
+    cmd="cp -r"
   fi
 
+  # Copy the file:
+  $cmd $src_filepath $temp_filepath > /dev/null || return 1
+
   # Atomically copy over the new file from the temp
-  mv $temp_filename $filename
+  run_dest "mv $temp_filename $dest_filename" || return 1
 
   # Remove the remote file
   if [ -n "$delete_remote" ] 
   then
-    run_remote "rm -rf $remote_filename"
+    run_src "rm -rf $src_filename" || return 1
   fi
+
+  print_copy_finished $filename
 }
 
-copy_remote_files()
+copy_src_files()
 {
   new_files=`list_new_files`
   if [ "$?" -ne "0" ]
   then
-    print_error "No such file or directory '$remote_username@$remote_hostname:$remote_port$remote_dir'"
+    print_error "No such file or directory '$src_username@$src_hostname:$src_port$src_dir'"
     exit 1
   fi
   for new_file in $new_files
   do
-    copy_remote_file $new_file
+    copy_src_file $new_file
   done
 }
 
 cleanup()
 {
-  echo "cleaning up"
-  rm -rf "$temp_prefix*"
+  rm -rf "$temp_dir"
 }
 
 ###############################################
 # Main:
 ###############################################
+
 # Register the signal handler
 trap "cleanup; exit 0" SIGHUP SIGINT SIGTERM
 
-print_status "Siphoning files from '$remote_username@$remote_hostname:$remote_port$remote_dir' to '$local_dir'"
+src_to_print=`get_src_pretty_path`
+dest_to_print=`get_dest_pretty_path`
+
+print_status "Siphoning files from '$src_to_print' to '$dest_to_print'"
 print_status "Use ctrl+c to exit..."
 
 # Copy remote files forever:
@@ -270,16 +429,11 @@ do
   # If enough time has elapsed... copy new files:
   if [ "$time_diff" -ge "$time_interval" ]
   then
-    copy_remote_files
-    if [ "$?" -ne "0" ]
-    then
-      exit 1
-    fi
+    copy_src_files || exit 1
     last_time=$current_time
   # Not enough time has elapsed... sleep:
   else
     time_to_sleep=`expr $time_interval - $time_diff`
-    echo "sleeping $time_to_sleep"
     sleep $time_to_sleep
   fi
 done
