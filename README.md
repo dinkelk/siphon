@@ -30,7 +30,7 @@ By default, `siphon` prints to the terminal using pretty colors. To disable this
 
 Clone this repository and add it to your path, or copy `siphon` to a location on your path.
 
-`siphon` assumes that you already have passwordless login setup for any remote machine you intend to copy files to/from. To set up passwordless login see [here](http://www.linuxproblem.org/art_9.html) or run the `sshkeyexchange` script provided in `util/`:
+`siphon` assumes that you already have passwordless login setup for any remote machine you intend to copy files to or from. To set up passwordless login see [here](http://www.linuxproblem.org/art_9.html) or run the `sshkeyexchange` script provided in `util/`:
 
 ```
 $ sshkeyexchange user@example.com
@@ -40,7 +40,7 @@ $ sshkeyexchange user@example.com
 
 ## Using `siphon`:
 
-Using `siphon` is very similiar to using `scp`. Below are some possible uses for siphon:
+Using `siphon` is very similiar to using `scp`.
 
 ```
 $ siphon -h
@@ -52,42 +52,43 @@ Options: -t time interval in seconds to wait between copying new files
          -D show debug prints
 ```
 
-Copy any new files that appear on a remote machine to a directory on the host machine; check for new files every 10 seconds:
+#####Copy any new files that appear on a remote machine to a directory on the host machine; check for new files every 10 seconds:
 
 ```
 $ siphon -t 10 user@example.com:/home/user/files ~/files
 ```
 
-Don't use port 22 for `ssh`? No problem:
+#####Don't use port 22 for `ssh`? No problem:
 
 ```
 $ siphon -t 10 user@example.com:98765/home/user/files ~/files
 ```
-Copy any new files from a remote machine, but delete them off the remote machine after they are copied:
+
+#####Copy any new files from a remote machine, but delete them off the remote machine after they are copied:
 
 ```
 $ siphon -d -t 25 user@example.com:/files/to/copy/and/then/delete
 ```
 
-Copy any new files that appear on a remote machine to the current directory on the host machine:
+#####Copy any new files that appear on a remote machine to the current directory on the host machine:
 
 ```
 $ siphon user@example.com:/home/user/files
 ```
 
-Copy any new files that appear on a local machine to a remote machine:
+#####Copy any new files that appear on a local machine to a remote machine:
 
 ```
 $ siphon ~/files user@example.com/home/user/files 
 ```
 
-Copy any new files that appear in one directory to another on a local machine:
+#####Copy any new files that appear in one directory to another on a local machine:
 
 ```
 $ siphon /path/to/dir1 /path/to/dir2 
 ```
 
-Run `siphon` in the background while copying its output to a log:
+#####Run `siphon` in the background while copying its output to a log:
 
 ```
 $ siphon -n user@example.com:/home/user/files ~/files >> siphon.log &
