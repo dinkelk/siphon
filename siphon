@@ -400,7 +400,7 @@ copy_src_files()
   new_files=`list_new_files`
   if [ "$?" -ne "0" ]
   then
-    print_error "No such file or directory '$src_username@$src_hostname:$src_port$src_dir'"
+    print_error "No such file or directory - source: '$src_dir' or destination: '$dest_dir'"
     exit 1
   fi
   for new_file in $new_files
@@ -412,6 +412,10 @@ copy_src_files()
 cleanup()
 {
   rm -rf "$temp_dir"
+  if [ -z "$dest_remote" ]
+  then
+    rm -rf "$dest_dir/$temp_prefix*"
+  fi
 }
 
 ###############################################
