@@ -39,7 +39,7 @@ print_()
 {
   if [ -n "$color" ]
   then
-    format=$1
+    format="$1"
     echo $format"[`get_time`]$NC $@"$NC
   else
     echo "[`get_time`] $@"
@@ -60,9 +60,9 @@ print_status()
 }
 print_copy()
 {
+  filename="$1"
   if [ -n "$color" ]
   then
-    filename=$1
     print_ $CYAN "copying  $BOLD$filename"
   else
     print_ "copying  $filename"
@@ -70,9 +70,9 @@ print_copy()
 }
 print_copy_finished()
 {
+  filename="$1"
   if [ -n "$color" ]
   then
-    filename=$1
     print_ $GREEN "copied   $BOLD$filename"
   else
     print_ "copied   $filename"
@@ -89,10 +89,9 @@ print_warning()
 }
 print_copy_warning()
 {
+  filename="$1"
   if [ -n "$color" ]
   then
-    filename=$1
-    shift
     print_warning "warning  $BOLD$filename - $@"
   else
     print_warning "warning  $filename - $@"
@@ -109,10 +108,9 @@ print_error()
 }
 print_copy_error()
 {
+  filename="$1"
   if [ -n "$color" ]
   then
-    filename=$1
-    shift
     print_error "error    $BOLD$filename - $@"
   else
     print_error "error    $filename - $@"
@@ -260,7 +258,7 @@ run_src()
       ssh $src_username@$src_hostname "$@"
     fi
   else
-    $@
+    eval "$@"
   fi
 }
 
@@ -275,18 +273,18 @@ run_dest()
       ssh $dest_username@$dest_hostname "$@"
     fi
   else
-    $@
+    eval "$@"
   fi
 }
 
 list_src_files()
 {
-  run_src "ls $src_dir"
+  run_src "ls -1 $src_dir"
 }
 
 list_dest_files()
 {
-  run_dest "ls $dest_dir"
+  run_dest "ls -1 $dest_dir"
 }
 
 list_new_files()
@@ -296,29 +294,29 @@ list_new_files()
   list_src_files > $src_temp_file || return 1
   list_dest_files > $dest_temp_file || return 1
   # Diff the local vs remote file and extract
-  diff $dest_temp_file $src_temp_file | awk '/^\>.*$/ { s = ""; for (i = 2; i <= NF; i++) s = s $i " "; print s }'
+  diff $dest_temp_file $src_temp_file | awk '/^\>.*$/ { s = $2; for (i = 3; i <= NF; i++) s = s " " $i; print s }'
   rm -f $dest_temp_file $src_temp_file
 }
 
 get_src_filepath()
 {
-  src_filename=$1
+  src_filename="$@"
   if [ -n "$src_remote" ]
   then
-      echo "$src_username@$src_hostname:\"$src_filename\""
+      echo "$src_username@$src_hostname:\"'$src_filename'\""
   else
-      echo $src_filename
+      echo \"$src_filename\"
   fi
 }
 
 get_dest_filepath()
 {
-  dest_filename=$1
+  dest_filename="$@"
   if [ -n "$dest_remote" ]
   then
-      echo "$dest_username@$dest_hostname:\"$dest_filename\""
+      echo "$dest_username@$dest_hostname:\"'$dest_filename'\""
   else
-      echo $dest_filename
+      echo \"$dest_filename\"
   fi
 }
 
@@ -344,17 +342,17 @@ get_dest_pretty_path()
 
 copy_src_file()
 {
-  filename=$1
-  print_copy $filename
+  filename="$1"
+  print_copy "$filename"
 
   # Get the source filepath:
   src_filename="$src_dir/$filename"
-  src_filepath=`get_src_filepath $src_filename`
+  src_filepath="`get_src_filepath $src_filename`"
 
   # Get the destination filepath:
   dest_filename="$dest_dir/$filename"
   temp_filename="$dest_dir/$temp_prefix$filename"
-  temp_filepath=`get_dest_filepath $temp_filename`
+  temp_filepath="`get_dest_filepath $temp_filename`"
 
   # Make sure the file doesn't already exist in the destination:
   if [ -e "$dest_filename" ] || [ -d "$dest_filename" ]
@@ -381,10 +379,10 @@ copy_src_file()
   then
     echo "$cmd $src_filepath $temp_filepath"
   fi
-  $cmd $src_filepath $temp_filepath > /dev/null || return 1
+  eval "$cmd $src_filepath $temp_filepath > /dev/null" || return 1
 
   # Atomically copy over the new file from the temp
-  run_dest "mv $temp_filename $dest_filename" || return 1
+  run_dest "mv \"$temp_filename\" \"$dest_filename\"" || return 1
 
   # Remove the remote file
   if [ -n "$delete_remote" ] 
@@ -392,7 +390,7 @@ copy_src_file()
     run_src "rm -rf $src_filename" || return 1
   fi
 
-  print_copy_finished $filename
+  print_copy_finished "$filename"
 }
 
 copy_src_files()
@@ -403,9 +401,9 @@ copy_src_files()
     print_error "No such file or directory - source: '$src_dir' or destination: '$dest_dir'"
     exit 1
   fi
-  for new_file in $new_files
-  do
-    copy_src_file $new_file
+
+  list_new_files | while read p; do
+    copy_src_file "$p"
   done
 }
 
